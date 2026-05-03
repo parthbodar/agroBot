@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      // Admin check based on email from requirement
+      return isSignedIn() && (
+        request.auth.token.email == 'parthbodar777@gmail.com' && request.auth.token.email_verified == true
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // User Profile Rules
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().keys().hasAll(['location', 'typicalCrops', 'farmingPractices']);
+      allow update: if isOwner(userId) && isValidUserProfile(incoming()) 
+                     && incoming().diff(existing()).affectedKeys().hasOnly(['location', 'typicalCrops', 'farmingPractices', 'weatherPatterns', 'soilType', 'waterSources', 'nearbyFlora', 'favoriteCrops', 'updatedAt']);
+      
+      function isValidUserProfile(data) {
+        return (data.get('location', '') is string && data.get('location', '').size() <= 500)
+          && (data.get('typicalCrops', '') is string && data.get('typicalCrops', '').size() <= 1000)
+          && (data.get('farmingPractices', '') is string && data.get('farmingPractices', '').size() <= 1000);
+      }
+
+      // Sessions
+      match /sessions/{sessionId} {
+        allow list: if isOwner(userId) || isAdmin();
+        allow get: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidSession(incoming()) && incoming().keys().hasAll(['title', 'createdAt', 'userId']);
+        allow update: if isOwner(userId) && isValidSession(incoming())
+                       && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'updatedAt', 'timestamp']);
+        allow delete: if isOwner(userId) || isAdmin();
+
+        function isValidSession(data) {
+          return (data.get('title', '') is string && data.get('title', '').size() <= 200)
+            && (data.get('userId', userId) == userId);
+        }
+
+        // Messages
+        match /messages/{messageId} {
+          allow list: if isOwner(userId) || isAdmin();
+          allow get: if isOwner(userId) || isAdmin();
+          allow create: if isOwner(userId) && isValidMessage(incoming()) && incoming().keys().hasAll(['role', 'text', 'timestamp']);
+          
+          function isValidMessage(data) {
+            return (data.role in ['user', 'model'])
+              && (data.text is string && data.text.size() <= 100000);
+          }
+        }
+      }
+    }
+
+    // Expert Consultations
+    match /consultations/{consultationId} {
+      allow list: if isAdmin();
+      allow get: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn() && isValidConsultation(incoming()) && incoming().keys().hasAll(['userId', 'userEmail', 'userName', 'details', 'createdAt']);
+      allow update: if isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isAdmin();
+
+      function isValidConsultation(data) {
+        return (data.get('userId', request.auth.uid) == request.auth.uid)
+          && (data.get('userEmail', request.auth.token.email) == request.auth.token.email)
+          && (data.get('details', '') is string && data.get('details', '').size() <= 10000);
+      }
+    }
+  }
+}

@@ -1,0 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Space Grotesk", sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --color-ag-green: #2D4635;
+  --color-ag-light: #FAF9F6;
+  --color-ag-accent: #34D399;
+  --color-glass-surface: rgba(255, 255, 255, 0.4);
+  --color-glass-border: rgba(45, 70, 53, 0.08);
+}
+
+body {
+  @apply font-sans m-0 p-0 text-[#1A1A1A];
+  background-color: var(--color-ag-light);
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(45, 70, 53, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(52, 211, 153, 0.07) 0px, transparent 50%),
+    url("https://www.transparenttextures.com/patterns/felt.png");
+  overflow: hidden;
+}
+
+.glass-panel {
+  background: var(--color-glass-surface);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--color-glass-border);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.02);
+}
+
+.glass-panel-dark {
+  background: rgba(45, 70, 53, 0.03);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(45, 70, 53, 0.05);
+}
+
+.technical-label {
+  @apply font-display text-[10px] uppercase tracking-[0.2em] font-bold opacity-40;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(45, 70, 53, 0.1);
+  border-radius: 10px;
+}
+

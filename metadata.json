@@ -1,0 +1,6 @@
+{
+  "name": "AgroBot",
+  "description": "An AI-powered agricultural assistant for smart farming, crop advice, and pest management.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": []
+}

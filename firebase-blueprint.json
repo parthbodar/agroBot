@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Information about the farmer's environment and preferences.",
+      "type": "object",
+      "properties": {
+        "location": { "type": "string" },
+        "typicalCrops": { "type": "string" },
+        "farmingPractices": { "type": "string" },
+        "weatherPatterns": { "type": "string" },
+        "soilType": { "type": "string" },
+        "waterSources": { "type": "string" },
+        "nearbyFlora": { "type": "string" },
+        "favoriteCrops": { "type": "array", "items": { "type": "object" } },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["location", "typicalCrops", "farmingPractices"]
+    },
+    "ChatSession": {
+      "title": "ChatSession",
+      "description": "A diagnostic conversation session.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
+      },
+      "required": ["title", "createdAt", "userId"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "A single message in a chat session.",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["user", "model"] },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "visualSummary": { "type": "object" },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "preview": { "type": "string" },
+              "mimeType": { "type": "string" }
+            }
+          }
+        },
+        "generatedImage": { "type": "string" }
+      },
+      "required": ["role", "text", "timestamp"]
+    },
+    "ExpertConsultation": {
+      "title": "ExpertConsultation",
+      "description": "A request for a human specialist review.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "subject": { "type": "string" },
+        "details": { "type": "string" },
+        "sessionHistory": { "type": "string" },
+        "attachedImages": { "type": "array", "items": { "type": "string" } },
+        "diagnosticSummary": { "type": "object" },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userEmail", "userName", "details", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile data."
+    },
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": "ChatSession",
+      "description": "User's chat sessions."
+    },
+    "/users/{userId}/sessions/{sessionId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Messages within a session."
+    },
+    "/consultations/{consultationId}": {
+      "schema": "ExpertConsultation",
+      "description": "Escalated consultation requests for specialists."
+    }
+  }
+}

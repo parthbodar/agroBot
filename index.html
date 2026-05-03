@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AgroBot - Precision Agronomy</title>
+    <script>
+      // Suppress benign Vite HMR websocket errors that can trigger unhandled rejection popups in this environment
+      window.addEventListener('unhandledrejection', function(event) {
+        if (event.reason && (
+          (event.reason.message && (event.reason.message.includes('websocket') || event.reason.message.includes('WebSocket'))) ||
+          String(event.reason).includes('WebSocket')
+        )) {
+          event.preventDefault();
+        }
+      });
+      // Also catch console errors from Vite client if they are spammy
+      const originalError = console.error;
+      console.error = (...args) => {
+        if (args[0] && typeof args[0] === 'string' && (args[0].includes('[vite] failed to connect') || args[0].includes('WebSocket'))) {
+          return;
+        }
+        originalError.apply(console, args);
+      };
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
