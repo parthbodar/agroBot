@@ -10,9 +10,19 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(express.json());
+
   // API routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  app.post("/api/notify-registration", (req, res) => {
+    const { uid, email, displayName } = req.body;
+    console.log(`[NOTIFICATION] New user registered: ${displayName} (${email}) with ID: ${uid}`);
+    console.log(`[MAIL] Sending notification to: parthbodar777@gmail.com`);
+    // In a real production app with an API key, we would use nodemailer or a service like SendGrid here.
+    res.json({ success: true, message: "Notification logged to administrator." });
   });
 
   // Mock endpoint for monthly aggregation (could be called by a cron)

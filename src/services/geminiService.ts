@@ -158,10 +158,66 @@ User Farm Profile:
 
 export async function sendMessage(history: ChatMessage[], message: string, imagesData?: { data: string; mimeType: string }[], userProfile?: UserProfile) {
   try {
-    const contents = history.map(msg => ({
-      role: msg.role,
-      parts: [{ text: msg.text }]
-    }));
+    // Determine the last message role to ensure alternating roles
+    const lastMessageRole = history.length > 0 ? history[history.length - 1].role : null;
+
+    // Map history to contents, including images if they exist
+    const contents = history.map(msg => {
+      const parts: any[] = [{ text: msg.text }];
+      
+      if (msg.images && msg.images.length > 0) {
+        msg.images.forEach(img => {
+          // Check if we have data or preview (which might contain data)
+          let base64Data = '';
+          if (img.preview && img.preview.startsWith('data:')) {
+            base64Data = img.preview.split(',')[1];
+          } else {
+            // If it's just a string or already stripped
+            base64Data = img.preview;
+          }
+
+          if (base64Data && !base64Data.startsWith('blob:')) {
+            parts.push({
+              inlineData: {
+                data: base64Data,
+                mimeType: img.mimeType
+              }
+            });
+          }
+        });
+      }
+      
+      return {
+        role: msg.role,
+        parts
+      };
+    });
+
+    const currentParts: any[] = [{ text: message }];
+    
+    if (imagesData && imagesData.length > 0) {
+      imagesData.forEach(img => {
+        currentParts.push({
+          inlineData: {
+            data: img.data.includes(',') ? img.data.split(',')[1] : img.data,
+            mimeType: img.mimeType
+          }
+        });
+      });
+    }
+
+    // Deduplicate: If the last message in history is the same as the current message (from the user),
+    // don't push it again to avoid consecutive 'user' roles error.
+    const isDuplicate = lastMessageRole === 'user' && 
+                       history[history.length - 1].text === message &&
+                       (!imagesData || imagesData.length === 0);
+
+    if (!isDuplicate) {
+      contents.push({
+        role: "user",
+        parts: currentParts
+      });
+    }
 
     // Prepend user profile context if available
     let contextualInstruction = SYSTEM_INSTRUCTION;
@@ -176,25 +232,6 @@ ${userProfile.waterSources ? `- Water Availability/Sources: ${userProfile.waterS
 ${userProfile.nearbyFlora ? `- Nearby Wild Flora/Biodiversity: ${userProfile.nearbyFlora}` : ''}
 Please adjust your advice to be highly relevant to these specific conditions.`;
     }
-
-    const currentParts: any[] = [{ text: message }];
-    
-    if (imagesData && imagesData.length > 0) {
-      imagesData.forEach(img => {
-        currentParts.push({
-          inlineData: {
-            data: img.data,
-            mimeType: img.mimeType
-          }
-        });
-      });
-    }
-
-    // Add current message
-    contents.push({
-      role: "user",
-      parts: currentParts
-    });
 
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -216,7 +253,7 @@ export async function generateImage(text: string) {
     // First, use Gemini to extract a concise botanical/agricultural subject from the text 
     // to avoid Imagen prompt complexity failures/filters
     const promptExtraction = await ai.models.generateContent({
-      model: "gemini-2.0-flash-exp",
+      model: "gemini-3-flash-preview",
       contents: [{
         role: "user",
         parts: [{ text: `Extract a single, concise physical subject (e.g., "A diseased tomato leaf with brown spots", "A healthy wheat field") that represents the following diagnostic text for a scientific illustration. Focus ONLY on the visual subject, no instructions: \n\n${text.slice(0, 1000)}` }]

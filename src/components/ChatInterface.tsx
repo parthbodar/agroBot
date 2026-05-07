@@ -61,6 +61,7 @@ import {
   googleProvider, 
   signInWithPopup, 
   onAuthStateChanged, 
+  signOut,
   User as FirebaseUser,
   doc,
   getDoc,
@@ -405,6 +406,13 @@ export default function ChatInterface() {
   const [weatherAlerts, setWeatherAlerts] = useState<WeatherAlert[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Smooth scrolling to the latest message
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [sessions, isLoading, currentSessionId]);
+
   // Simulated Weather Alert Intelligence
   useEffect(() => {
     if (userProfile.location !== "Not Specified") {
@@ -553,7 +561,7 @@ export default function ChatInterface() {
     }
   };
 
-  const handleSignOut = () => auth.signOut();
+  const handleSignOut = () => signOut(auth);
 
   const createNewSession = async () => {
     if (!user) {
@@ -1003,10 +1011,11 @@ export default function ChatInterface() {
     Array.from(files).forEach(file => {
       const reader = new FileReader();
       reader.onload = () => {
+        const base64 = reader.result as string;
         setSelectedImages(prev => [...prev, {
-          data: (reader.result as string).split(',')[1],
+          data: base64.split(',')[1],
           mimeType: file.type,
-          preview: URL.createObjectURL(file)
+          preview: base64 // Store base64 for persistence
         }]);
       };
       reader.readAsDataURL(file);
@@ -1016,9 +1025,32 @@ export default function ChatInterface() {
   };
 
   const handleSend = async () => {
-    if ((!input.trim() && selectedImages.length === 0) || isLoading || !user || !currentSessionId) {
+    if ((!input.trim() && selectedImages.length === 0) || isLoading || !user) {
       if (!user) handleSignIn();
       return;
+    }
+
+    let sessionId = currentSessionId;
+    let isNewSession = false;
+
+    // Auto-create session if none exists
+    if (!sessionId) {
+      const newSessionId = nanoid();
+      const sessionRef = doc(db, `users/${user.uid}/sessions`, newSessionId);
+      try {
+        await setDoc(sessionRef, {
+          title: "New Growth Cycle",
+          timestamp: Date.now(),
+          createdAt: serverTimestamp(),
+          userId: user.uid
+        });
+        sessionId = newSessionId;
+        setCurrentSessionId(newSessionId);
+        isNewSession = true;
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `users/${user.uid}/sessions/${newSessionId}`);
+        return;
+      }
     }
 
     const userMessage = input.trim() || (selectedImages.length > 0 ? "Please identify the crop condition in these images." : "");
@@ -1029,7 +1061,7 @@ export default function ChatInterface() {
     setIsLoading(true);
 
     try {
-      const sessionRef = `users/${user.uid}/sessions/${currentSessionId}`;
+      const sessionRef = `users/${user.uid}/sessions/${sessionId}`;
       const messagesRef = collection(db, `${sessionRef}/messages`);
 
       // Add user message to Firestore
@@ -1040,7 +1072,11 @@ export default function ChatInterface() {
         timestamp: serverTimestamp()
       });
 
-      const currentMessages = sessions.find(s => s.id === currentSessionId)?.messages || [];
+      // If it's a new session, or we just created it, we might not have the full messages yet in state
+      // But we can just use the current one for immediate context
+      const sessionObj = sessions.find(s => s.id === sessionId);
+      const currentMessages = sessionObj?.messages || [];
+      
       const response = await sendMessage([...currentMessages], userMessage, imagesToUpload.length > 0 ? imagesToUpload.map(img => ({ data: img.data, mimeType: img.mimeType })) : undefined, userProfile);
       
       const { cleanText, visualSummary } = parseVisualSummary(response);
@@ -1061,7 +1097,6 @@ export default function ChatInterface() {
 
     } catch (error) {
       console.error('Failed to get response:', error);
-      // Fallback or error message could be added to Firestore too
     } finally {
       setIsLoading(false);
     }
@@ -1415,37 +1450,41 @@ export default function ChatInterface() {
             </div>
           </div>
           
-          <div className="absolute left-1/2 -translate-x-1/2 hidden lg:flex items-center gap-8">
+          <div className="hidden xl:flex items-center justify-center gap-4 2xl:gap-8 mx-4 min-w-0">
             <motion.button 
+              id="header-environmental-profile-btn"
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setIsProfileModalOpen(true)}
-              className="transition-all cursor-pointer group items-center gap-2 px-4 py-2 hover:bg-[#2D4635]/5 rounded-sm flex"
+              className="transition-all cursor-pointer group items-center gap-2 px-3 2xl:px-4 py-2 hover:bg-[#2D4635]/5 rounded-sm flex flex-shrink-0"
             >
               <Compass className="w-4 h-4 text-[#2D4635]/40 group-hover:text-[#2D4635]" />
-              <span className="technical-label !opacity-60 group-hover:opacity-100">Environmental Profile</span>
+              <span className="technical-label !opacity-60 group-hover:opacity-100 hidden 2xl:inline">Environmental Profile</span>
             </motion.button>
             <motion.button 
+              id="header-dossier-summary-btn"
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => handleSummarize(messages.length - 1, messages[messages.length - 1]?.text)}
               disabled={messages.length === 0}
-              className="transition-all cursor-pointer group items-center gap-2 px-4 py-2 hover:bg-[#2D4635]/5 rounded-sm disabled:opacity-0 flex"
+              className="transition-all cursor-pointer group items-center gap-2 px-3 2xl:px-4 py-2 hover:bg-[#2D4635]/5 rounded-sm disabled:opacity-0 flex flex-shrink-0"
             >
               <FileText className="w-4 h-4 text-[#2D4635]/40 group-hover:text-[#2D4635]" />
-              <span className="technical-label !opacity-60 group-hover:opacity-100">Dossier Summary</span>
+              <span className="technical-label !opacity-60 group-hover:opacity-100 hidden 2xl:inline">Dossier Summary</span>
             </motion.button>
             <motion.button 
+              id="header-export-pdf-btn"
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => exportToPDF()}
               disabled={messages.length === 0}
-              className="transition-all cursor-pointer group items-center gap-2 px-4 py-2 hover:bg-[#2D4635]/5 rounded-sm disabled:opacity-0 flex"
+              className="transition-all cursor-pointer group items-center gap-2 px-3 2xl:px-4 py-2 hover:bg-[#2D4635]/5 rounded-sm disabled:opacity-0 flex flex-shrink-0"
             >
               <Download className="w-4 h-4 text-[#2D4635]/40 group-hover:text-[#2D4635]" />
-              <span className="technical-label !opacity-60 group-hover:opacity-100">Export PDF</span>
+              <span className="technical-label !opacity-60 group-hover:opacity-100 hidden 2xl:inline">Export PDF</span>
             </motion.button>
             <motion.button 
+              id="header-deep-research-btn"
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => {
@@ -1453,19 +1492,30 @@ export default function ChatInterface() {
                   window.open(`https://www.google.com/search?q=${encodeURIComponent(currentSession.title + " agriculture")}`, '_blank');
                 }
               }}
-              className="transition-all cursor-pointer group items-center gap-2 px-4 py-2 hover:bg-[#2D4635]/5 rounded-sm flex"
+              className="transition-all cursor-pointer group items-center gap-2 px-3 2xl:px-4 py-2 hover:bg-[#2D4635]/5 rounded-sm flex flex-shrink-0"
             >
               <Search className="w-4 h-4 text-[#2D4635]/40 group-hover:text-[#2D4635]" />
-              <span className="technical-label !opacity-60 group-hover:opacity-100">Deep Field Research</span>
+              <span className="technical-label !opacity-60 group-hover:opacity-100 hidden 2xl:inline">Deep Field Research</span>
             </motion.button>
           </div>
 
-          <div className="flex items-center gap-6">
-            <div className="hidden sm:block text-right">
-              <p className="technical-label !opacity-20">Diagnostic Node</p>
-              <p className="text-[11px] font-mono text-black/40 truncate max-w-[120px]">{currentSessionId?.slice(0, 12)}</p>
+          <div className="flex items-center gap-2 md:gap-4 lg:gap-6 flex-shrink-0">
+            <motion.button
+              id="header-farm-profile-btn"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setIsProfileModalOpen(true)}
+              className="hidden md:flex items-center gap-2 px-3 py-2 bg-emerald-50 text-[#2D4635] rounded-sm border border-emerald-100 hover:bg-emerald-100 transition-colors"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span className="technical-label !opacity-100 text-[9px]">Farm Profile</span>
+            </motion.button>
+            <div className="hidden lg:block text-right">
+              <p className="technical-label !opacity-20 text-[8px]">Diagnostic Node</p>
+              <p className="text-[10px] font-mono text-black/40 truncate max-w-[100px]">{currentSessionId?.slice(0, 12)}</p>
             </div>
             <motion.button 
+              id="header-user-avatar-btn"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setIsProfileModalOpen(true)}
@@ -1599,12 +1649,18 @@ export default function ChatInterface() {
                     transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
                     className="flex flex-col gap-3 group items-start perspective-1000"
                   >
-                    <div className="flex items-center gap-4 mb-2">
+                    <div className="flex items-center justify-between gap-4 mb-2 w-full max-w-4xl">
                        <span className={`text-[10px] uppercase tracking-[0.2em] font-bold ${
                          msg.role === 'user' ? 'text-black/30' : 'text-[#2D4635]'
                        }`}>
                          {msg.role === 'user' ? 'Researcher' : 'AgroBot Intelligence'}
                        </span>
+                       {msg.timestamp && (
+                         <div className="flex items-center gap-1.5 text-[9px] text-black/20 font-bold uppercase tracking-widest">
+                           <Clock className="w-2.5 h-2.5" />
+                           {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                         </div>
+                       )}
                     </div>
                     
                     <div className="flex gap-4 md:gap-8 w-full max-w-4xl">
@@ -1854,56 +1910,54 @@ export default function ChatInterface() {
           )}
           {isLoading && (
             <motion.div 
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="flex gap-4 md:gap-8 items-start"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col gap-3 items-start perspective-1000 max-w-4xl"
             >
-              <div className="relative">
-                <div className="w-[2px] h-12 bg-[#2D4635]/20" />
-                <motion.div 
-                  animate={{ 
-                    height: ["0%", "100%", "0%"],
-                    top: ["0%", "0%", "100%"]
-                  }}
-                  transition={{ 
-                    duration: 2, 
-                    repeat: Infinity, 
-                    ease: "easeInOut" 
-                  }}
-                  className="absolute left-0 w-[2px] bg-[#2D4635] shadow-[0_0_10px_rgba(45,70,53,0.5)]" 
-                />
+              <div className="flex items-center gap-4 mb-2">
+                 <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#2D4635] flex items-center gap-2">
+                   AgroBot Intelligence
+                   <motion.span 
+                    animate={{ opacity: [0, 1, 0] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className="technical-label"
+                   >(Analyzing...)</motion.span>
+                 </span>
               </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-3 text-black/40 italic font-serif">
-                  <div className="relative">
-                    <Loader2 className="w-4 h-4 animate-spin text-[#2D4635]" />
-                    <motion.div 
-                      animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                      className="absolute inset-0 bg-[#2D4635] rounded-full blur-sm"
-                    />
+              <div className="flex gap-4 md:gap-8 w-full">
+                <div className="w-[2px] h-full min-h-[48px] bg-[#2D4635] shadow-[0_0_10px_rgba(45,70,53,0.3)] origin-top" />
+                <div className="flex-1 glass-card p-6 bg-white/40 flex flex-col gap-3 rounded-sm border border-[#2D4635]/5 shadow-xl shadow-black/5">
+                  <div className="flex items-center gap-3 text-black/40 italic font-serif">
+                    <div className="relative">
+                      <Loader2 className="w-4 h-4 animate-spin text-[#2D4635]" />
+                      <motion.div 
+                        animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="absolute inset-0 bg-[#2D4635] rounded-full blur-sm"
+                      />
+                    </div>
+                    <AnimatePresence mode="wait">
+                      <motion.span 
+                        key={loadingMessageIndex}
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -5 }}
+                        className="text-xs md:text-sm"
+                      >
+                        {loadingMessages[loadingMessageIndex]}
+                      </motion.span>
+                    </AnimatePresence>
                   </div>
-                  <AnimatePresence mode="wait">
-                    <motion.span 
-                      key={loadingMessageIndex}
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -5 }}
-                      className="text-xs md:text-sm"
-                    >
-                      {loadingMessages[loadingMessageIndex]}
-                    </motion.span>
-                  </AnimatePresence>
-                </div>
-                <div className="flex gap-1">
-                  {[0, 1, 2].map((i) => (
-                    <motion.div
-                      key={i}
-                      animate={{ opacity: [0.2, 1, 0.2] }}
-                      transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
-                      className="w-1 h-1 bg-[#2D4635] rounded-full"
-                    />
-                  ))}
+                  <div className="flex gap-1 px-1">
+                    {[0, 1, 2].map((i) => (
+                      <motion.div
+                        key={i}
+                        animate={{ scale: [1, 1.5, 1], opacity: [0.3, 1, 0.3] }}
+                        transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+                        className="w-1.5 h-1.5 bg-[#2D4635] rounded-full"
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -2022,37 +2076,67 @@ export default function ChatInterface() {
                 <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" multiple />
                 <input type="file" ref={cameraInputRef} onChange={handleFileChange} className="hidden" accept="image/*" capture="environment" multiple />
                 
-                <textarea
-                  value={input}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Inquire regarding soil chemistry, pathogen vectors, or crop seasonality..."
-                  className="flex-1 bg-transparent border-none focus:ring-0 text-[#2D4635] placeholder-[#2D4635]/30 text-sm md:text-lg py-5 px-6 resize-none max-h-[300px] font-sans font-medium custom-scrollbar"
-                  rows={1}
-                />
-                
+                <div className="flex-1 relative group bg-[#FDFCF9]/50 border border-black/[0.03] rounded-sm transition-all duration-300 focus-within:bg-white focus-within:border-emerald-900/10 focus-within:shadow-[0_0_20px_rgba(45,70,53,0.05)]">
+                  <textarea
+                    value={input}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Inquire regarding soil chemistry, pathogen vectors, or crop seasonality..."
+                    className="w-full bg-transparent border-none focus:ring-0 text-[#2D4635] placeholder-[#2D4635]/30 text-base md:text-lg pt-6 pb-6 pl-6 pr-12 resize-none max-h-[300px] font-sans font-medium custom-scrollbar"
+                    rows={1}
+                  />
+                  
+                  <AnimatePresence>
+                    {input && (
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        className="absolute right-3 top-6"
+                      >
+                        <button 
+                          onClick={() => setInput('')}
+                          className="p-1.5 hover:bg-black/5 rounded-full text-black/20 hover:text-red-500 transition-colors"
+                          title="Clear input"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="absolute right-4 bottom-2 flex items-center gap-3">
+                    {input.length > 0 && (
+                      <span className="text-[9px] font-mono font-bold tracking-widest text-[#2D4635]/20">
+                        {input.length} CHR
+                      </span>
+                    )}
+                  </div>
+                </div>
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={handleSend}
                   disabled={(!input.trim() && selectedImages.length === 0) || isLoading}
-                  className={`p-5 rounded-sm flex items-center justify-center transition-all duration-500 h-full ${
+                  className={`px-6 py-5 rounded-sm flex items-center justify-center transition-all duration-500 h-full min-w-[70px] ${
                     input.trim() || selectedImages.length > 0 
                       ? 'bg-[#2D4635] text-white shadow-xl shadow-emerald-900/20' 
                       : 'bg-black/5 text-black/20'
                   }`}
                 >
                   {isLoading ? (
-                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
-                    <div className="flex items-center gap-4 px-4">
-                      <span className="text-[11px] uppercase tracking-widest font-bold hidden sm:block">Engage Analysis</span>
-                      <Send className="w-5 h-5" />
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] uppercase tracking-[0.2em] font-black hidden lg:block">Engage Analysis</span>
+                      <Send className="w-4 h-4" />
                     </div>
                   )}
                 </motion.button>
